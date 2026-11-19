@@ -21,7 +21,7 @@ h3{font-size:12px;text-transform:uppercase;letter-spacing:.08em;color:var(--mute
 .hello{font:600 21px/1.2 Fraunces,Georgia,serif;margin:2px 2px 12px}
 .row{display:flex;gap:8px;align-items:center}
 .grow{flex:1;min-width:0}
-input[type=text],input[type=email],input[type=month],input[type=date],input[type=time],input[type=number],input:not([type]),select,textarea{border:1px solid var(--line);background:#fff;border-radius:12px;padding:11px 12px;width:100%;outline:none}
+input[type=text],input[type=email],input[type=password],input[type=month],input[type=date],input[type=time],input[type=number],input:not([type]),select,textarea{border:1px solid var(--line);background:#fff;border-radius:12px;padding:11px 12px;width:100%;outline:none}
 textarea{resize:vertical;line-height:1.4}
 input:focus,select:focus,textarea:focus{border-color:var(--green);box-shadow:0 0 0 3px var(--green-soft)}
 .btn{border:0;background:var(--green);color:#fff;border-radius:12px;padding:11px 16px;font-weight:600;white-space:nowrap;text-decoration:none;display:inline-block;text-align:center}

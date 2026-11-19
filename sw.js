@@ -1,6 +1,6 @@
 // Nido service worker: keeps the app shell available offline.
 // Data always goes straight to Supabase; it is never cached here.
-const CACHE = 'nido-v1';
+const CACHE = 'nido-v2';
 const SHELL = ['./', './index.html', './app.js', './styles.css', './config.js', './manifest.webmanifest',
   './icons/icon-192.png', './icons/icon-512.png', './icons/apple-touch-icon.png', './icons/nido.svg'];
 

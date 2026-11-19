@@ -310,7 +310,7 @@ function vBoard(){
 function vPeople(){
  const b=balances(),act=active(),mine=myMembership();
  let h=claimBanner()+'<div class="card"><h2>Your home</h2><div class="field"><label for="hname">Name</label><input id="hname" value="'+esc(state.name)+'"></div><div class="field" style="margin:0"><label for="cur">Currency</label><select id="cur">'+['€','$','£','CHF ','kr '].map(c=>'<option'+(c===state.currency?' selected':'')+'>'+c+'</option>').join('')+'</select></div></div>';
- h+='<div class="card"><h2>Housemates</h2><p class="meta" style="margin-top:0">Add each person’s email so they can sign in. They get a 6-digit code by email, no password needed.</p>';
+ h+='<div class="card"><h2>Housemates</h2><p class="meta" style="margin-top:0">Add each person’s email so they can join. They create an account with that email in Nido and they’re in.</p>';
  h+=act.map(m=>{const bal=b[m.id]||0,em=emailOf(m.id),isMe=em&&em===myEmail;
   const acc=em?`<div class="meta" style="margin-top:3px;overflow-wrap:anywhere"><span class="badge">✉️ ${esc(em)}${isMe?' · you':''}</span> ${isMe?'<button class="linkbtn" data-act="unclaim">Not me</button>':`<button class="linkbtn" data-act="revoke" data-k="${esc(em)}">Remove access</button>`}</div>`:`<input type="email" data-invite="${m.id}" placeholder="Email to invite" autocomplete="off" style="margin-top:6px;padding:8px 10px;font-size:14px">`;
   return `<div class="mem" style="align-items:flex-start"><div class="avatar" style="background:${color(m.id)}">${esc(m.name.charAt(0).toUpperCase())}</div><div class="grow"><input data-rename="${m.id}" value="${esc(m.name)}" aria-label="Name">${acc}</div><div class="amt" style="min-width:66px;padding-top:10px"><span class="${bal>0?'pos':bal<0?'neg':'meta'}" style="font-size:13px;font-weight:600">${bal===0?'square':signed(bal)}</span></div>${bal===0?delBtn('m:'+m.id):'<span class="x" title="Settle up before removing" style="opacity:.3;padding-top:10px">×</span>'}</div>`}).join('');
@@ -330,18 +330,24 @@ function vGate(){
  const err=authStep.err?`<div class="err" style="margin-top:8px">${esc(authStep.err)}</div>`:'';
  if(phase==='noconfig')h+='<div class="card"><h2>Almost there</h2><p class="meta" style="margin:0">Nido isn’t connected to its database yet. Follow the setup steps in the README, then add your Supabase URL and key to <code>config.js</code>.</p></div>';
  else if(phase==='boot')h+='<p class="meta">Loading your home…</p>';
- else if(phase==='login')h+=`<div class="card"><h2>Sign in</h2><p class="meta" style="margin-top:0">Enter your email and we’ll send you a 6-digit code.</p><form id="loginForm"><input type="email" id="lemail" placeholder="you@example.com" autocomplete="email" value="${esc(authStep.email||'')}" required><button class="btn wide" style="margin:10px 0 0" ${authStep.sending?'disabled':''}>${authStep.sending?'Sending…':'Send me a code'}</button></form>${err}</div>`;
- else if(phase==='code')h+=`<div class="card"><h2>Check your email</h2><p class="meta" style="margin-top:0">We sent a code to <b>${esc(authStep.email)}</b>. It can take a minute; check spam too.</p><form id="codeForm"><input id="lcode" inputmode="numeric" autocomplete="one-time-code" placeholder="123456" maxlength="10" style="font-size:24px;letter-spacing:.3em;text-align:center"><button class="btn wide" style="margin:10px 0 0" ${authStep.verifying?'disabled':''}>${authStep.verifying?'Checking…':'Sign in'}</button></form>${err}<div class="row" style="justify-content:space-between;margin-top:8px"><button class="linkbtn" data-act="backLogin">Use a different email</button><button class="linkbtn" data-act="resend">Send a new code</button></div></div>`;
+else if(phase==='login'){const su=authStep.mode==='signup';h+=`<div class="card"><div class="seg" style="margin-bottom:14px"><button class="${su?'':'on'}" data-act="authMode" data-k="signin">Sign in</button><button class="${su?'on':''}" data-act="authMode" data-k="signup">Create account</button></div><form id="loginForm"><div class="field"><label for="lemail">Email</label><input type="email" id="lemail" autocomplete="email" value="${esc(authStep.email||'')}" required></div><div class="field"><label for="lpass">${su?'Choose a password (8+ characters)':'Password'}</label><input type="password" id="lpass" autocomplete="${su?'new-password':'current-password'}" minlength="${su?8:1}" required></div><button class="btn wide" style="margin:4px 0 0" ${authStep.busy?'disabled':''}>${authStep.busy?'One moment…':su?'Create account':'Sign in'}</button></form>${err}${authStep.unconfirmed?'<button class="linkbtn" style="padding:6px 0 0" data-act="resendConfirm">Send the confirmation email again</button>':''}${su?'':'<div style="margin-top:8px"><button class="linkbtn" style="padding:0" data-act="forgot">Forgot your password?</button></div>'}</div>`;}
+else if(phase==='checkmail')h+=`<div class="card"><h2>📬 Check your email</h2><p class="meta" style="margin-top:0">${authStep.reset?'We sent a password reset link to':'We sent a confirmation link to'} <b>${esc(authStep.email)}</b>. Tap it (it may open in Safari), then come back here${authStep.reset?' after choosing a new password':''} and sign in. Check spam if it doesn’t arrive within a few minutes.</p><button class="btn wide" style="margin:0" data-act="backLogin">Back to sign in</button></div>`;
+ else if(phase==='confirmed')h+=`<div class="card"><h2>✅ ${authStep.reset?'Password updated':'Email confirmed'}</h2><p class="meta" style="margin-top:0">${isStandalone()?'You can sign in now.':'If you installed Nido on your home screen, open it from there and sign in. Or continue here.'}</p><button class="btn wide" style="margin:0" data-act="backLogin">Sign in</button></div>`;
+ else if(phase==='reset')h+=`<div class="card"><h2>Choose a new password</h2><form id="resetForm"><div class="field"><label for="npass">New password (8+ characters)</label><input type="password" id="npass" autocomplete="new-password" minlength="8" required></div><button class="btn wide" style="margin:0" ${authStep.busy?'disabled':''}>${authStep.busy?'Saving…':'Save password'}</button></form>${err}</div>`;
  else if(phase==='nohousehold')h+=`<div class="card"><h2>Welcome!</h2><p class="meta" style="margin-top:0">You’re signed in as <b>${esc(myEmail)}</b>, but you’re not part of a home yet.</p><p style="margin:0 0 6px"><b>Joining your housemates?</b></p><p class="meta" style="margin-top:0">Ask whoever set up Nido to add <b>${esc(myEmail)}</b> in People, then <button class="linkbtn" style="padding:0" data-act="retry">tap here to check again</button>.</p></div><div class="card"><h2>Start a new home</h2><form id="hhForm">${fld('Name','<input id="hhname" placeholder="e.g. Casita" autocomplete="off">','hhname')}${fld('Import data (optional)','<input type="file" id="hhimport" accept=".json,application/json" style="font-size:14px"><div class="meta" style="margin-top:4px">The nido-data.json export from the Claude version.</div>','hhimport')}<button class="btn wide" style="margin:0" ${authStep.creating?'disabled':''}>${authStep.creating?'Creating…':'Create home'}</button></form>${err}</div><p style="text-align:center"><button class="linkbtn" data-act="signout">Sign out</button></p>`;
  else h+=`<div class="card"><h2>Couldn’t load</h2><p class="meta">${esc(authStep.err||'Something went wrong.')}</p><button class="btn" data-act="retry">Try again</button></div>`;
  return h+'</div>';
 }
 async function boot(){
  if(!CFG.supabaseUrl||!CFG.supabaseKey||!window.supabase){phase='noconfig';render();return}
- sb=window.supabase.createClient(CFG.supabaseUrl,CFG.supabaseKey,{auth:{persistSession:true,autoRefreshToken:true,detectSessionInUrl:true,flowType:'pkce'}});
- sb.auth.onAuthStateChange((ev,session)=>{if(ev==='SIGNED_IN'&&session&&(phase==='login'||phase==='code'))enter(session)});
+ const urlInfo=location.hash+'&'+location.search,cameFrom=/type=recovery/.test(urlInfo)?'recovery':/type=(signup|email|invite)/.test(urlInfo)?'signup':'',urlErr=(urlInfo.match(/error_description=([^&]+)/)||[])[1];
+ sb=window.supabase.createClient(CFG.supabaseUrl,CFG.supabaseKey,{auth:{persistSession:true,autoRefreshToken:true,detectSessionInUrl:true,flowType:'implicit'}});
+ sb.auth.onAuthStateChange((ev,session)=>{if(ev==='PASSWORD_RECOVERY'){phase='reset';authStep={};render()}});
+ if(urlErr){try{history.replaceState(null,'',location.pathname)}catch(e){}phase='login';authStep={err:decodeURIComponent(urlErr.replace(/\+/g,' '))+'. Try again or request a new link.'};render();return}
+ if(cameFrom==='recovery'){await new Promise(r=>setTimeout(r,300));if((await sb.auth.getSession()).data.session){phase='reset';authStep={};render();return}}
  let session=null;try{session=(await sb.auth.getSession()).data.session}catch(e){}
  if(!session){phase='login';render();return}
+ if(cameFrom==='signup')setTimeout(()=>toast('Email confirmed ✓ Welcome to Nido'),600);
  await enter(session)}
 async function enter(session){myEmail=(session.user.email||'').toLowerCase();phase='boot';authStep={};render();
  const lastHH=LS.get('nido_hh');
@@ -356,8 +362,15 @@ async function enter(session){myEmail=(session.user.email||'').toLowerCase();pha
   if(c){hh=lastHH;state=load(J(c.state));base=c.base?load(J(c.base)):clone(state);ver=c.ver||0;dirty=!!c.dirty;memberships=c.memberships||[];const mm=myMembership();me=mm&&mm.member_id||null;phase='ready';render();setStatus('offline')}
   else{phase='error';authStep.err=String(e.message||e);render()}}}
 function subscribe(){if(channel)sb.removeChannel(channel);channel=sb.channel('hh-'+hh).on('postgres_changes',{event:'UPDATE',schema:'public',table:'households',filter:'id=eq.'+hh},p=>onRemote(p.new)).subscribe()}
-async function sendCode(email){authStep={email,sending:true};render();const {error}=await sb.auth.signInWithOtp({email,options:{shouldCreateUser:true,emailRedirectTo:location.origin+location.pathname}});authStep.sending=false;if(error){authStep.err=error.message;phase='login'}else phase='code';render();if(phase==='code'){const c=document.getElementById('lcode');if(c)c.focus()}}
-async function verifyCode(code){authStep.verifying=true;authStep.err='';render();const {data,error}=await sb.auth.verifyOtp({email:authStep.email,token:code,type:'email'});authStep.verifying=false;if(error){authStep.err=error.message.includes('expired')||error.message.includes('invalid')?'That code didn’t work. Check it, or send a new one.':error.message;render();return}await enter(data.session)}
+const authErr=m=>/rate limit/i.test(m)?'Too many emails sent in the last hour (Supabase’s free email limit). Please try again a bit later.':/Invalid login/i.test(m)?'Wrong email or password.':/already registered/i.test(m)?'That email already has an account. Use Sign in instead.':m;
+async function signIn(email,pass){authStep={email,busy:true};render();const {data,error}=await sb.auth.signInWithPassword({email,password:pass});authStep.busy=false;
+ if(error){if(/not confirmed/i.test(error.message)){authStep.err='Confirm your email first: tap the link we sent you.';authStep.unconfirmed=true}else authStep.err=authErr(error.message);render();return}await enter(data.session)}
+async function signUp(email,pass){if(pass.length<8){authStep={email,mode:'signup',err:'Use at least 8 characters.'};render();return}authStep={email,mode:'signup',busy:true};render();
+ const {data,error}=await sb.auth.signUp({email,password:pass,options:{emailRedirectTo:location.origin+location.pathname}});authStep.busy=false;
+ if(error){authStep.err=authErr(error.message);render();return}
+ if(data.session){await enter(data.session);return}
+ if(data.user&&Array.isArray(data.user.identities)&&!data.user.identities.length){authStep={email,err:'That email already has an account. Sign in instead.'};render();return}
+ phase='checkmail';authStep={email};render()}
 async function createHousehold(){const nameIn=(document.getElementById('hhname').value||'').trim(),f=document.getElementById('hhimport');let initial=load('{}');
  if(f&&f.files&&f.files[0]){try{initial=load(await f.files[0].text());if(!initial.members.length&&!initial.expenses.length)throw 0;initial.members.forEach(m=>delete m.uid)}catch(e){authStep.err='That file isn’t a Nido export.';render();return}}
  if(nameIn)initial.name=nameIn;authStep.creating=true;authStep.err='';render();
@@ -482,7 +495,10 @@ root.addEventListener('click',ev=>{
  if(a==='openDoc'){openDoc(k);return}
  if(a==='signout'){(async()=>{try{if(channel)sb.removeChannel(channel);await sb.auth.signOut()}catch(e){}LS.set('nido_hh','');location.hash='';location.reload()})();return}
  if(a==='backLogin'){phase='login';authStep={email:authStep.email};render();return}
- if(a==='resend'){sendCode(authStep.email);return}
+ if(a==='authMode'){const em=(document.getElementById('lemail')||{}).value;phase='login';authStep={email:em||authStep.email,mode:k};render();return}
+ if(a==='resendConfirm'){sb.auth.resend({type:'signup',email:authStep.email,options:{emailRedirectTo:location.origin+location.pathname}}).then(({error})=>{if(error){authStep.err=authErr(error.message);render()}else{phase='checkmail';authStep={email:authStep.email};render()}});return}
+ if(a==='forgot'){const em=((document.getElementById('lemail')||{}).value||'').trim().toLowerCase();if(!em){authStep={err:'Type your email above first.'};render();return}
+  sb.auth.resetPasswordForEmail(em,{redirectTo:location.origin+location.pathname}).then(({error})=>{if(error){authStep={email:em,err:authErr(error.message)};render()}else{phase='checkmail';authStep={email:em,reset:true};render()}});return}
  if(a==='retry'){(async()=>{const s2=(await sb.auth.getSession()).data.session;if(s2)enter(s2);else{phase='login';render()}})();return}
  if(a==='newBill'){openSheet({kind:'bill',desc:'',amt:'',day:1,cat:'rent',paidBy:defPayer(),split:defSpec()},'fdesc');return}
  if(a==='editBill'){const b=state.bills.find(x=>x.id===k);if(b)openSheet({kind:'bill',id:b.id,desc:b.name,amt:(b.amount/100).toFixed(2).replace('.',','),day:b.day,cat:b.cat,paidBy:b.paidBy,split:clone(b.split||defSpec())});return}
@@ -509,15 +525,15 @@ root.addEventListener('change',ev=>{const t=ev.target;
  if(t.id==='dfile'){uploadDocs([...t.files]);return}
  if(t.id==='dmonth'&&sheet){sheet.month=t.value;return}
  if(t.dataset&&t.dataset.invite){const em=t.value.trim().toLowerCase();if(!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(em)){toast('That email doesn’t look right');return}
-  sb.from('household_members').upsert({household_id:hh,email:em,member_id:t.dataset.invite},{onConflict:'household_id,email'}).then(r=>{if(r.error){toast(r.error.message);return}toast('Added. '+nm(t.dataset.invite)+' can now sign in with '+em);return loadMemberships().then(render)});return}
+  sb.from('household_members').upsert({household_id:hh,email:em,member_id:t.dataset.invite},{onConflict:'household_id,email'}).then(r=>{if(r.error){toast(r.error.message);return}toast('Added. '+nm(t.dataset.invite)+' can now create an account with '+em);return loadMemberships().then(render)});return}
  if(t.id==='hname'){const v=t.value.trim();if(v&&v!==state.name){state.name=v;commit()}return}
  if(t.id==='cur'){state.currency=t.value;commit();return}
  if(t.dataset.rename){const m=mem(t.dataset.rename),v=t.value.trim();if(m&&v&&v!==m.name){m.name=v;commit()}}
 });
 root.addEventListener('input',ev=>{const t=ev.target;if(t.id==='famt'||t.classList.contains('sval'))updatePreview();});
 root.addEventListener('submit',ev=>{ev.preventDefault();const f=ev.target,val=id=>{const e=document.getElementById(id);return e?e.value.trim():''},err=m=>{const e=document.getElementById('ferr');if(e)e.textContent=m};
- if(f.id==='loginForm'){const em=val('lemail').toLowerCase();if(em)sendCode(em);return}
- if(f.id==='codeForm'){const c=val('lcode').replace(/\s/g,'');if(c)verifyCode(c);return}
+ if(f.id==='loginForm'){const em=val('lemail').toLowerCase(),pw=document.getElementById('lpass').value;if(!em||!pw)return;if(authStep.mode==='signup')signUp(em,pw);else signIn(em,pw);return}
+ if(f.id==='resetForm'){const pw=document.getElementById('npass').value;if(pw.length<8){authStep.err='Use at least 8 characters.';render();return}authStep.busy=true;render();sb.auth.updateUser({password:pw}).then(async({error})=>{authStep.busy=false;if(error){authStep.err=error.message;render();return}const s2=(await sb.auth.getSession()).data.session;if(isStandalone()&&s2){toast('Password updated');enter(s2)}else{phase='confirmed';authStep={reset:true};render()}});return}
  if(f.id==='hhForm'){createHousehold();return}
  if(f.id==='addItem'){const n=val('gname'),q=val('gqty');if(!n)return;document.getElementById('gname').value='';document.getElementById('gqty').value='';addItem(n,q);return}
  if(f.id==='addMem'){const n=val('mname');if(!n)return;const m={id:uid(),name:n};state.members.push(m);document.getElementById('mname').value='';commit();if(!linkedMember()&&active().length===1)claim(m.id);const i=document.getElementById('mname');if(i)i.focus();return}
