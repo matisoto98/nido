@@ -116,3 +116,4 @@ a.mepill{text-decoration:none;color:inherit}
 .glogo svg{width:88px;height:88px;border-radius:22px;display:block;margin:0 auto;box-shadow:0 8px 24px rgba(38,90,66,.25)}
 .gname{font:700 34px/1.1 Fraunces,Georgia,serif;margin:14px 0 22px}
 code{background:var(--paper);padding:1px 5px;border-radius:5px;font-size:13px}
+.dot{position:absolute;right:-2px;bottom:-2px;width:12px;height:12px;border-radius:50%;background:#2fb36b;border:2px solid var(--card)}

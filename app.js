@@ -31,8 +31,8 @@ const GROUPS=[
  {k:'food',i:'🧺',l:'Food',subs:[['list','List'],['pantry','Pantry'],['meals','Meals']]},
  {k:'money',i:'💶',l:'Money',subs:[['expenses','Expenses'],['bills','Bills'],['summary','Summary']]},
  {k:'house',i:'🧹',l:'House',subs:[['chores','Chores'],['calendar','Calendar'],['board','Board']]},
- {k:'people',i:'👥',l:'People',subs:[['people','People']]}];
-const ROUTES=['home','list','pantry','meals','expenses','bills','summary','chores','calendar','board','people','shop'];
+ {k:'people',i:'👥',l:'People',subs:[['people','People'],['activity','Activity']]}];
+const ROUTES=['home','list','pantry','meals','expenses','bills','summary','chores','calendar','board','people','activity','shop'];
 
 /* ---------- helpers ---------- */
 const aisleOf=n=>{for(const a of AISLES)if(a[1].test(n))return a[0];return 'Other'};
@@ -103,20 +103,20 @@ function mergeObj(b,l,r){b=b||{};l=l||{};r=r||{};const out=Object.assign({},r);n
 function merge3(b,l,r){const o={};for(const k in DEFAULT){if(ARR_KEYS.includes(k))o[k]=mergeArr(b[k],l[k],r[k]);else if(OBJ_KEYS.includes(k))o[k]=mergeObj(b[k],l[k],r[k]);else o[k]=J(l[k])!==J(b[k])?l[k]:r[k]}o.v=2;return o}
 const cacheKey=()=>'nido_cache_'+hh;
 function cacheLocal(){if(hh)LS.set(cacheKey(),J({state,base,ver,dirty,memberships}))}
-function commit(){render();dirty=true;cacheLocal();setStatus('pending');clearTimeout(saveTimer);saveTimer=setTimeout(save,600)}
+function commit(){logChanges();render();dirty=true;cacheLocal();setStatus('pending');clearTimeout(saveTimer);saveTimer=setTimeout(save,600)}
 async function save(){if(saving||!dirty||!hh||!sb)return;saving=true;dirty=false;setStatus('saving');
  try{for(let i=0;i<6;i++){const snap=clone(state);
    const {data,error}=await sb.from('households').update({data:snap,version:ver+1,updated_at:new Date().toISOString()}).eq('id',hh).eq('version',ver).select('version');
    if(error)throw error;
    if(data&&data.length){ver=data[0].version;base=snap;if(J(state)!==J(snap))dirty=true;break}
    const r=await sb.from('households').select('data,version').eq('id',hh).single();if(r.error)throw r.error;
-   const remote=load(J(r.data.data));state=merge3(base,state,remote);base=clone(remote);ver=r.data.version;softRender()}
+   const remote=load(J(r.data.data));state=merge3(base,state,remote);base=clone(remote);ver=r.data.version;logBase=clone(state);softRender()}
   setStatus(dirty?'pending':'saved');cacheLocal()}
  catch(e){console.warn('save failed',e);dirty=true;setStatus(navigator.onLine===false?'offline':'error');cacheLocal();clearTimeout(saveTimer);saveTimer=setTimeout(save,5000)}
  saving=false;if(dirty&&navigator.onLine!==false){clearTimeout(saveTimer);saveTimer=setTimeout(save,300)}}
-function onRemote(row){if(!row||row.version<=ver)return;const remote=load(J(row.data));if(!dirty&&!saving)state=clone(remote);else state=merge3(base,state,remote);base=remote;ver=row.version;cacheLocal();softRender()}
-async function pull(){if(!sb||!hh)return;try{const r=await sb.from('households').select('data,version').eq('id',hh).single();if(!r.error)onRemote(r.data);await loadMemberships();softRender();if(dirty)save()}catch(e){}}
-async function loadMemberships(){if(!sb||!hh)return;const r=await sb.from('household_members').select('email,member_id').eq('household_id',hh);if(!r.error){memberships=r.data||[];const mine=memberships.find(m=>m.email===myEmail);me=mine&&mine.member_id&&mem(mine.member_id)?mine.member_id:null}}
+function onRemote(row){if(!row||row.version<=ver)return;const remote=load(J(row.data));if(!dirty&&!saving)state=clone(remote);else state=merge3(base,state,remote);base=remote;ver=row.version;logBase=clone(state);cacheLocal();softRender()}
+async function pull(){if(!sb||!hh)return;try{const r=await sb.from('households').select('data,version').eq('id',hh).single();if(!r.error)onRemote(r.data);await loadMemberships();if(actLoaded)loadActivity();softRender();if(dirty)save()}catch(e){}}
+async function loadMemberships(){if(!sb||!hh)return;const r=await sb.from('household_members').select('email,member_id,role,last_seen_at').eq('household_id',hh);if(!r.error){memberships=r.data||[];const mine=memberships.find(m=>m.email===myEmail);me=mine&&mine.member_id&&mem(mine.member_id)?mine.member_id:null;retrack()}}
 function softRender(){if(phase!=='ready'){return}if(sheet){pendingRender=true;return}const keep={};['gname','gqty','pname','ntext','mname'].forEach(id=>{const e=document.getElementById(id);if(e&&e.value)keep[id]=e.value});const a=document.activeElement,fid=a&&a.id,y=window.scrollY;render();Object.keys(keep).forEach(id=>{const e=document.getElementById(id);if(e)e.value=keep[id]});if(fid){const e=document.getElementById(fid);if(e)e.focus({preventScroll:true})}window.scrollTo(0,y)}
 function setStatus(s){status=s;const el=document.getElementById('status');if(!el)return;const map={pending:['Saving…','saving'],saving:['Saving…','saving'],saved:['Saved ✓','ok'],error:['Retrying…','bad'],offline:['Offline','bad']};const m=map[s]||['',''];el.textContent=m[0];el.className='status '+m[1]}
 const myMembership=()=>memberships.find(m=>m.email===myEmail)||null;
@@ -132,8 +132,81 @@ async function uploadDocs(files){const b=state.bills.find(x=>x.id===sheet.id);if
  for(const f of files){if(f.size>20*1024*1024){sheet.err=f.name+' is over the 20 MB limit';continue}
   const path=hh+'/'+uid()+'-'+safeName(f.name);
   try{const {error}=await sb.storage.from('nido-files').upload(path,f,{contentType:f.type||'application/octet-stream',upsert:false});if(error)throw error;b.docs=b.docs||[];b.docs.push({id:path,name:f.name,type:f.type,size:f.size,month,at:Date.now(),by:me});ok++}catch(e){console.warn(e);sheet.err='Couldn’t upload '+f.name}}
- sheet.uploading=false;render();if(ok){toast(ok+' document'+(ok>1?'s':'')+' saved to '+b.name);dirty=true;cacheLocal();save()}}
+ sheet.uploading=false;render();if(ok){toast(ok+' document'+(ok>1?'s':'')+' saved to '+b.name);commit()}}
 async function openDoc(path){const w=window.open('','_blank');try{const {data,error}=await sb.storage.from('nido-files').createSignedUrl(path,3600);if(error)throw error;if(w)w.location.href=data.signedUrl;else location.href=data.signedUrl}catch(e){if(w)w.close();toast('Couldn’t open the document')}}
+
+/* ---------- roles, activity log & presence ---------- */
+let logBase=null,actQueue=[],actFlushing=false,actTimer=null,activity=[],actFilter='',actLoaded=false,actLoading=false,actChannel=null,presenceCh=null,onlineIds=new Set();
+const isAdmin=()=>{const m=myMembership();return !!(m&&m.role==='admin')};
+const short=(s,n)=>{s=String(s||'');return s.length>n?s.slice(0,n-1)+'…':s};
+const q=s=>'“'+short(s,48)+'”';
+function describeDiff(a,b){const out=[];if(!a||!b)return out;
+ const byId=arr=>new Map((arr||[]).map(x=>[x.id,x]));
+ const coll=(key,f)=>{const A=byId(a[key]),B=byId(b[key]),adds=[],rems=[];
+  B.forEach((x,id)=>{if(!A.has(id))adds.push(x);else if(J(A.get(id))!==J(x)){const r=f.changed(A.get(id),x);if(r)out.push(r)}});
+  A.forEach((x,id)=>{if(!B.has(id))rems.push(x)});
+  if(adds.length>4)out.push(f.many(adds));else adds.forEach(x=>out.push(f.added(x)));
+  if(rems.length>4)out.push(f.manyRemoved(rems));else rems.forEach(x=>out.push(f.removed(x)))};
+ const to=x=>nm(Object.keys(x.shares||{})[0]);
+ coll('items',{added:x=>'added '+q(x.name)+' to the shopping list',many:x=>'added '+x.length+' items to the shopping list',
+  removed:x=>x.done?'cleared '+q(x.name)+' from the basket':'removed '+q(x.name)+' from the shopping list',
+  manyRemoved:r=>r.every(x=>x.done)?'cleared '+r.length+' items from the basket':'removed '+r.length+' items from the shopping list',
+  changed:(o,n)=>o.done!==n.done?(n.done?'got '+q(n.name):'unticked '+q(n.name)):'edited '+q(n.name)+' on the shopping list'});
+ coll('pantry',{added:x=>'added '+q(x.name)+' to the pantry',many:x=>'added '+x.length+' staples to the pantry',removed:x=>'removed '+q(x.name)+' from the pantry',manyRemoved:r=>'removed '+r.length+' staples from the pantry',
+  changed:(o,n)=>o.status!==n.status?'marked '+q(n.name)+' as '+({ok:'stocked',low:'running low',out:'out'}[n.status]||n.status):null});
+ coll('expenses',{added:x=>x.type==='payment'?'recorded that '+nm(x.paidBy)+' paid '+to(x)+' '+money(x.amount):'added the expense '+q(x.desc)+' — '+money(x.amount)+', paid by '+nm(x.paidBy),
+  many:x=>'added '+x.length+' expenses',manyRemoved:r=>'deleted '+r.length+' expenses',
+  removed:x=>x.type==='payment'?'deleted a payment of '+money(x.amount)+' ('+nm(x.paidBy)+' → '+to(x)+')':'deleted the expense '+q(x.desc)+' — '+money(x.amount),
+  changed:(o,n)=>'edited the expense '+q(n.desc)});
+ coll('bills',{added:x=>'created the recurring bill '+q(x.name)+' — '+money(x.amount),many:x=>'created '+x.length+' bills',removed:x=>'deleted the recurring bill '+q(x.name),manyRemoved:r=>'deleted '+r.length+' bills',
+  changed:(o,n)=>{const od=(o.docs||[]).length,nd=(n.docs||[]).length;if(nd>od)return 'uploaded '+(nd-od)+' document'+(nd-od>1?'s':'')+' to '+q(n.name);if(nd<od)return 'deleted '+(od-nd)+' document'+(od-nd>1?'s':'')+' from '+q(n.name);
+   if(o.lastLogged!==n.lastLogged){const logged=(b.expenses||[]).some(e=>e.billId===n.id&&!(a.expenses||[]).some(x=>x.id===e.id));return logged?null:'skipped '+q(n.name)+' this month'}return 'edited the bill '+q(n.name)}});
+ coll('chores',{added:x=>'added the chore '+q(x.name),many:x=>'added '+x.length+' chores',removed:x=>'deleted the chore '+q(x.name),manyRemoved:r=>'deleted '+r.length+' chores',
+  changed:(o,n)=>{const od=o.done||{},nd=n.done||{};const added=Object.keys(nd).filter(k=>!od[k]),gone=Object.keys(od).filter(k=>!nd[k]&&k>=addDays(monday(today()),-7));
+   if(added.length)return 'did '+q(n.name);if(gone.length)return 'unmarked '+q(n.name)+' as done';if((n.offset||0)!==(o.offset||0))return 'passed their turn for '+q(n.name);if(J(o.rota)!==J(n.rota)||o.name!==n.name||o.icon!==n.icon)return 'edited the chore '+q(n.name);return null}});
+ coll('events',{added:x=>'added '+q(x.title)+' to the calendar ('+fmtDate(x.date)+')',many:x=>'added '+x.length+' events',removed:x=>'removed '+q(x.title)+' from the calendar',manyRemoved:r=>'removed '+r.length+' events',changed:(o,n)=>'edited the event '+q(n.title)});
+ coll('notes',{added:x=>'posted a note: '+q(x.text),many:x=>'posted '+x.length+' notes',removed:x=>'deleted a note: '+q(x.text),manyRemoved:r=>'deleted '+r.length+' notes',changed:(o,n)=>o.pinned!==n.pinned?(n.pinned?'pinned':'unpinned')+' a note: '+q(n.text):'edited a note'});
+ coll('members',{added:x=>'added '+x.name+' to the house',many:x=>'added '+x.length+' people',removed:x=>'removed '+x.name+' from the house',manyRemoved:r=>'removed '+r.length+' people',
+  changed:(o,n)=>n.gone&&!o.gone?'removed '+n.name+' from the house':o.name!==n.name?'renamed '+o.name+' to '+n.name:null});
+ const am=a.meals||{},bm=b.meals||{};new Set(Object.keys(am).concat(Object.keys(bm))).forEach(d=>{const o=am[d],n=bm[d];if(J(o)===J(n))return;const day=parseD(d).toLocaleDateString('en-GB',{weekday:'short',day:'numeric',month:'short'});
+  if(!n)out.push('cleared dinner for '+day);else if(!o||o.name!==n.name)out.push('planned '+q(n.name||'dinner')+' for '+day);else out.push('edited dinner for '+day)});
+ if(a.name!==b.name)out.push('renamed the home to '+q(b.name));if(a.currency!==b.currency)out.push('changed the currency to '+b.currency);
+ return out.slice(0,12)}
+function logChanges(){if(!hh)return;const acts=describeDiff(logBase,state);logBase=clone(state);if(acts.length)queueActs(acts)}
+const actKey=()=>'nido_acts_'+hh;
+function queueActs(acts){if(!hh||!myEmail)return;const at=new Date().toISOString();acts.forEach(a=>actQueue.push({household_id:hh,email:myEmail,member_id:me||null,action:String(a).slice(0,300),at}));LS.set(actKey(),J(actQueue));clearTimeout(actTimer);actTimer=setTimeout(flushActs,1500)}
+function restoreActs(){try{const q2=JSON.parse(LS.get(actKey())||'[]');if(Array.isArray(q2)&&q2.length){actQueue=q2.concat(actQueue);flushActs()}}catch(e){}}
+async function flushActs(){if(actFlushing||!actQueue.length||!sb)return;actFlushing=true;const batch=actQueue.slice(0,50);
+ try{const {error}=await sb.from('activity').insert(batch);if(error)throw error;actQueue=actQueue.slice(batch.length);LS.set(actKey(),J(actQueue))}catch(e){clearTimeout(actTimer);actTimer=setTimeout(flushActs,10000)}
+ actFlushing=false;if(actQueue.length&&!actTimer)flushActs()}
+async function loadActivity(){if(!isAdmin()||!sb||!hh||actLoading)return;actLoading=true;
+ try{const r=await sb.from('activity').select('id,member_id,email,action,at').eq('household_id',hh).order('at',{ascending:false}).limit(300);if(!r.error){activity=r.data||[];actLoaded=true}}catch(e){}
+ actLoading=false;if(!actChannel)actChannel=sb.channel('act-'+hh).on('postgres_changes',{event:'INSERT',schema:'public',table:'activity',filter:'household_id=eq.'+hh},p=>{if(!activity.some(x=>x.id===p.new.id))activity.unshift(p.new);if(view()==='activity')softRender()}).subscribe();
+ if(view()==='activity')softRender()}
+function startPresence(){if(!sb||!hh)return;if(presenceCh)sb.removeChannel(presenceCh);onlineIds=new Set();
+ presenceCh=sb.channel('presence-'+hh,{config:{presence:{key:uid()}}});
+ presenceCh.on('presence',{event:'sync'},()=>{const st=presenceCh.presenceState(),set=new Set();Object.values(st).forEach(arr=>(arr||[]).forEach(x=>{if(x&&x.member_id)set.add(x.member_id)}));onlineIds=set;if(view()==='activity')softRender()})
+  .subscribe(status=>{if(status==='SUBSCRIBED')retrack()})}
+function retrack(){if(presenceCh&&document.visibilityState!=='hidden'){try{presenceCh.track({member_id:me||null,at:Date.now()})}catch(e){}}}
+function beat(){if(sb&&hh&&phase==='ready'&&document.visibilityState==='visible')sb.rpc('touch_presence',{hid:hh}).then(()=>{},()=>{})}
+function ago(ts){const t=new Date(ts),m=Math.round((Date.now()-t)/60000);if(m<2)return 'just now';if(m<60)return m+' min ago';const d=iso(t),n=daysBetween(d,today()),hm=t.toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'});
+ if(n===0)return 'today at '+hm;if(n===1)return 'yesterday at '+hm;return t.toLocaleDateString('en-GB',{day:'numeric',month:'short'})+' at '+hm}
+function pastLabel(d){const n=daysBetween(d,today());if(n===0)return 'Today';if(n===1)return 'Yesterday';return parseD(d).toLocaleDateString('en-GB',{weekday:'long',day:'numeric',month:'long'})}
+function vActivity(){
+ if(!isAdmin())return empty('Admins only','This page shows what everyone does in Nido. Ask an admin if you need it.');
+ if(!actLoaded&&!actLoading)setTimeout(loadActivity,0);
+ const act=active();
+ let h='<div class="card"><h2>Who’s around</h2>'+act.map(m=>{const ms=memberships.find(x=>x.member_id===m.id),on=onlineIds.has(m.id);
+  const txt=on?'<span class="pos" style="font-weight:600">● Online now</span>':ms?(ms.last_seen_at?'Last seen '+ago(ms.last_seen_at):'Hasn’t opened Nido yet'):'Not invited yet';
+  return `<div class="mem"><div class="avatar" style="background:${color(m.id)};position:relative">${esc(m.name.charAt(0).toUpperCase())}${on?'<span class="dot"></span>':''}</div><div class="grow"><div class="name">${esc(m.name)}${ms&&ms.role==='admin'?' <span class="badge">Admin</span>':''}</div><div class="meta">${txt}</div></div></div>`}).join('')+'</div>';
+ h+='<h3>Activity</h3><div class="chips" style="margin:0 0 10px">'+[['','Everyone']].concat(act.map(m=>[m.id,m.name])).map(([id,n])=>`<button class="chip${actFilter===id?' on':''}" data-act="actFilter" data-k="${id}">${esc(n)}</button>`).join('')+'</div>';
+ if(!actLoaded)return h+'<p class="meta" style="text-align:center">Loading…</p>';
+ const list=activity.filter(x=>!actFilter||x.member_id===actFilter);
+ if(!list.length)return h+empty('Nothing yet','Actions from now on will show up here.');
+ let cur='';list.forEach(x=>{const d=iso(new Date(x.at));if(d!==cur){if(cur)h+='</div>';cur=d;h+=`<h3>${pastLabel(d)}</h3><div class="card tight">`}
+  const who=x.member_id&&mem(x.member_id)?mem(x.member_id).name:x.email;
+  h+=`<div class="exp" style="align-items:flex-start"><div class="avatar" style="width:28px;height:28px;font-size:12px;background:${x.member_id?color(x.member_id):'#9a9a9a'}">${esc(String(who||'?').charAt(0).toUpperCase())}</div><div class="grow"><div style="overflow-wrap:anywhere"><b>${esc(who)}</b> ${esc(x.action)}</div><div class="meta">${new Date(x.at).toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'})}</div></div></div>`});
+ return h+'</div><p class="meta" style="text-align:center">Latest 300 actions · only admins can see this page.</p>'}
 
 /* ---------- render ---------- */
 function render(){
@@ -147,8 +220,9 @@ function render(){
   if(lm)h+='<a class="mepill" href="#people" title="'+esc(myEmail)+'">👤 '+esc(lm.name)+'</a>';
   h+='</header>';
   if(v!=='people')h+=claimBanner();
-  if(g.subs.length>1)h+='<div class="seg">'+g.subs.map(s=>`<a href="#${s[0]}" class="${s[0]===v?'on':''}">${s[1]}</a>`).join('')+'</div>';
-  h+=({home:vHome,list:vList,pantry:vPantry,meals:vMeals,expenses:vExpenses,bills:vBills,summary:vSummary,chores:vChores,calendar:vCalendar,board:vBoard,people:vPeople})[v]();
+  const subs=g.subs.filter(x=>x[0]!=='activity'||isAdmin());
+  if(subs.length>1)h+='<div class="seg">'+subs.map(s=>`<a href="#${s[0]}" class="${s[0]===v?'on':''}">${s[1]}</a>`).join('')+'</div>';
+  h+=({home:vHome,list:vList,pantry:vPantry,meals:vMeals,expenses:vExpenses,bills:vBills,summary:vSummary,chores:vChores,calendar:vCalendar,board:vBoard,people:vPeople,activity:vActivity})[v]();
  }
  h+='</div>';
  if(v!=='shop'){const g=groupOf(v);h+='<nav><div class="in">'+GROUPS.map(x=>`<a href="#${LS.get('hh_sub_'+x.k)||x.subs[0][0]}" class="${x.k===g.k?'on':''}"><span>${x.i}</span>${x.l}</a>`).join('')+'</div></nav>'}
@@ -308,16 +382,18 @@ function vBoard(){
 }
 
 function vPeople(){
- const b=balances(),act=active(),mine=myMembership();
+ const b=balances(),act=active(),mine=myMembership(),adm=isAdmin();
  let h=claimBanner()+'<div class="card"><h2>Your home</h2><div class="field"><label for="hname">Name</label><input id="hname" value="'+esc(state.name)+'"></div><div class="field" style="margin:0"><label for="cur">Currency</label><select id="cur">'+['€','$','£','CHF ','kr '].map(c=>'<option'+(c===state.currency?' selected':'')+'>'+c+'</option>').join('')+'</select></div></div>';
- h+='<div class="card"><h2>Housemates</h2><p class="meta" style="margin-top:0">Add each person’s email so they can join. They create an account with that email in Nido and they’re in.</p>';
+ h+='<div class="card"><h2>Housemates</h2><p class="meta" style="margin-top:0">'+(adm?'Add each person’s email so they can join. They create an account with that email in Nido and they’re in.':'Only admins can invite, remove or change roles.')+'</p>';
  h+=act.map(m=>{const bal=b[m.id]||0,em=emailOf(m.id),isMe=em&&em===myEmail;
-  const acc=em?`<div class="meta" style="margin-top:3px;overflow-wrap:anywhere"><span class="badge">✉️ ${esc(em)}${isMe?' · you':''}</span> ${isMe?'<button class="linkbtn" data-act="unclaim">Not me</button>':`<button class="linkbtn" data-act="revoke" data-k="${esc(em)}">Remove access</button>`}</div>`:`<input type="email" data-invite="${m.id}" placeholder="Email to invite" autocomplete="off" style="margin-top:6px;padding:8px 10px;font-size:14px">`;
-  return `<div class="mem" style="align-items:flex-start"><div class="avatar" style="background:${color(m.id)}">${esc(m.name.charAt(0).toUpperCase())}</div><div class="grow"><input data-rename="${m.id}" value="${esc(m.name)}" aria-label="Name">${acc}</div><div class="amt" style="min-width:66px;padding-top:10px"><span class="${bal>0?'pos':bal<0?'neg':'meta'}" style="font-size:13px;font-weight:600">${bal===0?'square':signed(bal)}</span></div>${bal===0?delBtn('m:'+m.id):'<span class="x" title="Settle up before removing" style="opacity:.3;padding-top:10px">×</span>'}</div>`}).join('');
+  const ms=memberships.find(x=>x.email===em),role=ms&&ms.role==='admin'?'admin':'user';
+  const roleUi=!em?'':adm&&!isMe?`<select data-role="${esc(em)}" aria-label="Role for ${esc(m.name)}" style="width:auto;padding:4px 8px;font-size:12px;margin-top:6px;border-radius:8px"><option value="user"${role==='user'?' selected':''}>User</option><option value="admin"${role==='admin'?' selected':''}>Admin</option></select>`:`<span class="badge" style="${role==='admin'?'':'background:var(--paper);color:var(--muted)'}">${role==='admin'?'Admin':'User'}</span>`;
+  const acc=em?`<div class="meta" style="margin-top:3px;overflow-wrap:anywhere"><span class="badge">✉️ ${esc(em)}${isMe?' · you':''}</span> ${roleUi} ${isMe?'<button class="linkbtn" data-act="unclaim">Not me</button>':adm?`<button class="linkbtn" data-act="revoke" data-k="${esc(em)}">Remove access</button>`:''}</div>`:adm?`<input type="email" data-invite="${m.id}" placeholder="Email to invite" autocomplete="off" style="margin-top:6px;padding:8px 10px;font-size:14px">`:'<div class="meta" style="margin-top:3px">Not invited yet</div>';
+  return `<div class="mem" style="align-items:flex-start"><div class="avatar" style="background:${color(m.id)}">${esc(m.name.charAt(0).toUpperCase())}</div><div class="grow"><input data-rename="${m.id}" value="${esc(m.name)}" aria-label="Name">${acc}</div><div class="amt" style="min-width:66px;padding-top:10px"><span class="${bal>0?'pos':bal<0?'neg':'meta'}" style="font-size:13px;font-weight:600">${bal===0?'square':signed(bal)}</span></div>${!adm?'':bal===0?delBtn('m:'+m.id):'<span class="x" title="Settle up before removing" style="opacity:.3;padding-top:10px">×</span>'}</div>`}).join('');
  if(!act.length)h+='<p class="meta">Add everyone who lives here, starting with yourself.</p>';
- h+='<form id="addMem" class="row" style="margin-top:10px"><input id="mname" class="grow" placeholder="Name" autocomplete="off"><button class="btn">Add</button></form></div>';
+ h+=(adm||!act.length?'<form id="addMem" class="row" style="margin-top:10px"><input id="mname" class="grow" placeholder="Name" autocomplete="off"><button class="btn">Add</button></form>':'')+'</div>';
  const extra=memberships.filter(x=>!x.member_id||!mem(x.member_id)||mem(x.member_id).gone);
- if(extra.length)h+='<div class="card"><h2>Also has access</h2>'+extra.map(x=>`<div class="mem"><div class="grow" style="overflow-wrap:anywhere">${esc(x.email)}${x.email===myEmail?' <span class="badge">you</span>':''}</div>${x.email===myEmail?'':`<button class="linkbtn" data-act="revoke" data-k="${esc(x.email)}">Remove</button>`}</div>`).join('')+'</div>';
+ if(extra.length)h+='<div class="card"><h2>Also has access</h2>'+extra.map(x=>`<div class="mem"><div class="grow" style="overflow-wrap:anywhere">${esc(x.email)}${x.email===myEmail?' <span class="badge">you</span>':''}</div>${x.email===myEmail||!adm?'':`<button class="linkbtn" data-act="revoke" data-k="${esc(x.email)}">Remove</button>`}</div>`).join('')+'</div>';
  h+=`<div class="card"><h2>Account</h2><div class="row"><div class="grow meta" style="overflow-wrap:anywhere">Signed in as <b>${esc(myEmail)}</b></div><button class="btn small ghost" data-act="signout">Sign out</button></div></div>`;
  if(!isStandalone())h+='<div class="card"><h2>📲 Install Nido</h2><p class="meta" style="margin:0">On iPhone: open this page in Safari, tap <b>Share</b> → <b>Add to Home Screen</b>. On Android: browser menu → <b>Install app</b>.</p></div>';
  return h+'<p class="meta" style="text-align:center">Nido · <a href="'+esc(location.origin+location.pathname)+'" style="color:var(--green)">'+esc((location.host+location.pathname).replace(/\/$/,''))+'</a></p>';
@@ -357,9 +433,9 @@ async function enter(session){myEmail=(session.user.email||'').toLowerCase();pha
   const row=await sb.from('households').select('data,version').eq('id',hh).single();if(row.error)throw row.error;
   const remote=load(J(row.data.data));let c=null;try{c=JSON.parse(LS.get(cacheKey())||'null')}catch(e){}
   if(c&&c.dirty&&c.base){state=merge3(load(J(c.base)),load(J(c.state)),remote);dirty=true}else{state=clone(remote);dirty=false}
-  base=remote;ver=row.data.version;await loadMemberships();subscribe();phase='ready';render();if(dirty)save();else setStatus('saved');
+  base=remote;ver=row.data.version;logBase=clone(state);await loadMemberships();subscribe();startPresence();beat();restoreActs();phase='ready';render();if(dirty)save();else setStatus('saved');
  }catch(e){console.warn(e);let c=null;try{c=lastHH&&JSON.parse(LS.get('nido_cache_'+lastHH)||'null')}catch(x){}
-  if(c){hh=lastHH;state=load(J(c.state));base=c.base?load(J(c.base)):clone(state);ver=c.ver||0;dirty=!!c.dirty;memberships=c.memberships||[];const mm=myMembership();me=mm&&mm.member_id||null;phase='ready';render();setStatus('offline')}
+  if(c){hh=lastHH;state=load(J(c.state));base=c.base?load(J(c.base)):clone(state);ver=c.ver||0;dirty=!!c.dirty;logBase=clone(state);memberships=c.memberships||[];const mm=myMembership();me=mm&&mm.member_id||null;phase='ready';render();setStatus('offline')}
   else{phase='error';authStep.err=String(e.message||e);render()}}}
 function subscribe(){if(channel)sb.removeChannel(channel);channel=sb.channel('hh-'+hh).on('postgres_changes',{event:'UPDATE',schema:'public',table:'households',filter:'id=eq.'+hh},p=>onRemote(p.new)).subscribe()}
 const authErr=m=>/rate limit/i.test(m)?'Too many emails sent in the last hour (Supabase’s free email limit). Please try again a bit later.':/Invalid login/i.test(m)?'Wrong email or password.':/already registered/i.test(m)?'That email already has an account. Use Sign in instead.':m;
@@ -376,7 +452,7 @@ async function createHousehold(){const nameIn=(document.getElementById('hhname')
  if(nameIn)initial.name=nameIn;authStep.creating=true;authStep.err='';render();
  const {data,error}=await sb.rpc('create_household',{initial});authStep.creating=false;if(error){authStep.err=error.message;render();return}
  LS.set('nido_hh',data);const s2=(await sb.auth.getSession()).data.session;await enter(s2)}
-async function claim(id){if(!hh)return;const r=await sb.from('household_members').update({member_id:id}).eq('household_id',hh).eq('email',myEmail);if(r.error){toast('Couldn’t link: '+r.error.message);return}await loadMemberships();render();const m=mem(id);if(m)toast('Linked: you’re '+m.name)}
+async function claim(id){if(!hh)return;const r=await sb.rpc('set_my_member',{hid:hh,mid:id});if(r.error){toast('Couldn’t link: '+r.error.message);return}await loadMemberships();render();const m=mem(id);if(m)toast('Linked: you’re '+m.name)}
 
 /* ---------- sheets ---------- */
 const catChips=sel=>'<div class="chips" style="margin-top:0">'+CATS.map(c=>`<button type="button" class="chip${c[0]===sel?' on':''}" data-pick="cat" data-val="${c[0]}">${c[1]} ${c[2]}</button>`).join('')+'</div>';
@@ -480,6 +556,7 @@ root.addEventListener('click',ev=>{
  if(a==='del'){armed=null;const [p,id]=k.split(':');
   const drop=(arr)=>state[arr]=state[arr].filter(x=>x.id!==id);
   if(p==='i')drop('items');if(p==='e')drop('expenses');if(p==='b')drop('bills');if(p==='c')drop('chores');if(p==='v')drop('events');if(p==='n')drop('notes');if(p==='p')drop('pantry');
+  if(p==='m'&&!isAdmin())return;
   if(p==='m'){const m=mem(id);const used=state.expenses.some(e=>e.paidBy===id||e.shares[id]!==undefined);if(used)m.gone=true;else state.members=state.members.filter(x=>x.id!==id);}
   commit();return}
  if(a==='toggle'){const it=state.items.find(i=>i.id===k);if(it){it.done=!it.done;it.doneBy=it.done?me:null;if(it.done)state.pantry.forEach(p=>{if(p.name.toLowerCase()===it.name.toLowerCase())p.status='ok'})}commit();return}
@@ -490,8 +567,9 @@ root.addEventListener('click',ev=>{
  if(a==='newExpense'){openExpense();return}
  if(a==='settle'){const s=settleUp(balances())[+k];if(s){const sh={};sh[s.to]=s.amount;state.expenses.push({id:uid(),type:'payment',desc:'Payment',amount:s.amount,paidBy:s.from,shares:sh,date:today(),at:Date.now(),by:me})}commit();return}
  if(a==='claim'){claim(k);return}
- if(a==='unclaim'){sb.from('household_members').update({member_id:null}).eq('household_id',hh).eq('email',myEmail).then(()=>loadMemberships()).then(render);return}
- if(a==='revoke'){if(k===myEmail)return;sb.from('household_members').delete().eq('household_id',hh).eq('email',k).then(r=>{if(r.error)toast(r.error.message);return loadMemberships()}).then(render);return}
+ if(a==='unclaim'){sb.rpc('set_my_member',{hid:hh,mid:null}).then(()=>loadMemberships()).then(render);return}
+ if(a==='revoke'){if(k===myEmail||!isAdmin())return;const who=memberships.find(x=>x.email===k);sb.from('household_members').delete().eq('household_id',hh).eq('email',k).then(r=>{if(r.error){toast(r.error.message);return}queueActs(['removed access for '+k+(who&&who.member_id?' ('+nm(who.member_id)+')':'')]);return loadMemberships()}).then(render);return}
+ if(a==='actFilter'){actFilter=k||'';render();return}
  if(a==='openDoc'){openDoc(k);return}
  if(a==='signout'){(async()=>{try{if(channel)sb.removeChannel(channel);await sb.auth.signOut()}catch(e){}LS.set('nido_hh','');location.hash='';location.reload()})();return}
  if(a==='backLogin'){phase='login';authStep={email:authStep.email};render();return}
@@ -524,8 +602,9 @@ root.addEventListener('click',ev=>{
 root.addEventListener('change',ev=>{const t=ev.target;
  if(t.id==='dfile'){uploadDocs([...t.files]);return}
  if(t.id==='dmonth'&&sheet){sheet.month=t.value;return}
+ if(t.dataset&&t.dataset.role){const em=t.dataset.role,role=t.value,who=memberships.find(x=>x.email===em);sb.from('household_members').update({role}).eq('household_id',hh).eq('email',em).then(r=>{if(r.error){toast(/at least one admin/.test(r.error.message)?'A home needs at least one admin.':r.error.message)}else{toast((who&&who.member_id?nm(who.member_id):em)+' is now '+(role==='admin'?'an admin':'a user'));queueActs(['made '+(who&&who.member_id?nm(who.member_id):em)+' '+(role==='admin'?'an admin':'a user')])}return loadMemberships()}).then(render);return}
  if(t.dataset&&t.dataset.invite){const em=t.value.trim().toLowerCase();if(!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(em)){toast('That email doesn’t look right');return}
-  sb.from('household_members').upsert({household_id:hh,email:em,member_id:t.dataset.invite},{onConflict:'household_id,email'}).then(r=>{if(r.error){toast(r.error.message);return}toast('Added. '+nm(t.dataset.invite)+' can now create an account with '+em);return loadMemberships().then(render)});return}
+  sb.from('household_members').upsert({household_id:hh,email:em,member_id:t.dataset.invite},{onConflict:'household_id,email'}).then(r=>{if(r.error){toast(r.error.message);return}toast('Added. '+nm(t.dataset.invite)+' can now create an account with '+em);queueActs(['gave '+nm(t.dataset.invite)+' access ('+em+')']);return loadMemberships().then(render)});return}
  if(t.id==='hname'){const v=t.value.trim();if(v&&v!==state.name){state.name=v;commit()}return}
  if(t.id==='cur'){state.currency=t.value;commit();return}
  if(t.dataset.rename){const m=mem(t.dataset.rename),v=t.value.trim();if(m&&v&&v!==m.name){m.name=v;commit()}}
@@ -554,7 +633,8 @@ root.addEventListener('submit',ev=>{ev.preventDefault();const f=ev.target,val=id
 });
 window.addEventListener('hashchange',()=>{sheet=null;armed=null;render();window.scrollTo(0,0)});
 document.addEventListener('keydown',e=>{if(e.key==='Escape'&&sheet){sheet=null;pendingRender=false;render()}});
-document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible'&&phase==='ready')pull()});
+document.addEventListener('visibilitychange',()=>{if(phase!=='ready')return;if(document.visibilityState==='visible'){pull();retrack();beat();flushActs()}else if(presenceCh){try{presenceCh.untrack()}catch(e){}}});
+setInterval(beat,60000);
 window.addEventListener('online',()=>{if(phase==='ready'){pull();save()}});
 window.addEventListener('offline',()=>setStatus('offline'));
 

@@ -13,6 +13,13 @@ It's a web app you install on your phone's home screen. Everyone has their own N
 - **iPhone:** open the link in **Safari** → **Share** → **Add to Home Screen**.
 - **Android:** open it in Chrome → menu (⋮) → **Install app**.
 
+## Roles
+
+- **Admin** (whoever created the home): invites and removes people, changes roles, and sees the **People → Activity** page: who's online, when everyone was last active, and a log of every action ("Santiago got “Huevos”", "Aldo added the expense …").
+- **User**: everything else — lists, money, chores, calendar, notes.
+
+A home always keeps at least one admin.
+
 ## Invite your housemates
 
 1. In Nido, go to **People** and type each person's email under their name.
@@ -25,7 +32,7 @@ It's a web app you install on your phone's home screen. Everyone has their own N
 Nido stores its data in a free Supabase project. Only people whose email is on your home's member list can read or change it.
 
 1. **Create a project.** Sign up at [supabase.com](https://supabase.com) → **New project**. Pick a region close to you (e.g. *West EU (Paris)* or *Central EU (Frankfurt)*) and any database password.
-2. **Create the database.** Open **SQL Editor** → **New query**, paste the contents of [`supabase/schema.sql`](supabase/schema.sql), then click **Run**.
+2. **Create the database.** Open **SQL Editor** → **New query**, paste the contents of [`supabase/schema.sql`](supabase/schema.sql), then click **Run**. Do the same with [`supabase/002_roles_activity.sql`](supabase/002_roles_activity.sql).
 3. **Set the app address.** Go to **Authentication** → **URL Configuration**: set **Site URL** to `https://matisoto98.github.io/nido/` and add the same URL under **Redirect URLs**.
 4. **Connect the app.** Go to **Project Settings** → **API keys** (or **Data API**). Copy the **Project URL** and the **anon / publishable** key into [`config.js`](config.js). Both are safe to publish; the security rules in step 2 protect the data.
 
