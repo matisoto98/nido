@@ -49,6 +49,17 @@ end $$;
 revoke all on function public.create_household(jsonb) from public, anon;
 grant execute on function public.create_household(jsonb) to authenticated;
 
+-- API access for signed-in users (needed if "Grant API access to new tables
+-- automatically" was left off when creating the project). Row-level security
+-- below still decides which rows each person can see.
+grant usage on schema public to authenticated;
+grant select, update on public.households to authenticated;
+grant select, insert, update, delete on public.household_members to authenticated;
+grant execute on function public.my_email() to authenticated;
+grant execute on function public.is_member(uuid) to authenticated;
+grant execute on function public.is_member_text(text) to authenticated;
+revoke all on public.households, public.household_members from anon;
+
 -- 3. Row-level security: only people on a home's member list can see or change it.
 alter table public.households        enable row level security;
 alter table public.household_members enable row level security;
