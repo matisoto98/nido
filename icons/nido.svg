@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#37795a"/><stop offset="1" stop-color="#265a42"/>
+    </linearGradient>
+    <clipPath id="bowlclip"><path d="M236 600 H788 C788 742 668 812 512 812 C356 812 236 742 236 600 Z"/></clipPath>
+  </defs>
+  <rect width="1024" height="1024" fill="url(#bg)"/>
+  <!-- roof -->
+  <path d="M232 468 L512 238 L792 468" fill="none" stroke="#f5f0e6" stroke-width="86" stroke-linecap="round" stroke-linejoin="round"/>
+  <!-- eggs -->
+  <ellipse cx="404" cy="566" rx="76" ry="98" fill="#f5f0e6" transform="rotate(-10 404 566)"/>
+  <ellipse cx="620" cy="566" rx="76" ry="98" fill="#f5f0e6" transform="rotate(10 620 566)"/>
+  <ellipse cx="512" cy="536" rx="84" ry="110" fill="#fffaf0"/>
+  <!-- nest bowl -->
+  <path d="M236 600 H788 C788 742 668 812 512 812 C356 812 236 742 236 600 Z" fill="#cf5a3f"/>
+  <g clip-path="url(#bowlclip)" stroke="#a9432c" stroke-width="20" stroke-linecap="round" fill="none">
+    <path d="M250 648 C400 690 620 690 774 648"/>
+    <path d="M280 706 C420 742 604 742 744 706"/>
+    <path d="M330 760 C450 784 574 784 694 760"/>
+  </g>
+  <path d="M220 600 H804" stroke="#e8795d" stroke-width="30" stroke-linecap="round"/>
+</svg>
